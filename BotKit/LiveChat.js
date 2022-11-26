@@ -1,14 +1,14 @@
 var botId               = "st-9654d6a8-1535-57f3-9815-ab6fcc320702";
 var botName             = "travelbot";
-var sdk                 = require("./lib/sdk");
-var request             = require('request');
-var Promise             = require('bluebird');
-var request             = Promise.promisify(request);
-var api                 = require('./LiveChatAPI.js');
-var _                   = require('lodash');
-var config              = require('./config.json');
+import { sendUserMessage, clearAgentSession, getMessages, skipUserMessage, sendBotMessage, skipBotMessage } from "./lib/sdk";
+import request from 'request';
+import { promisify, all } from 'bluebird';
+var request             = promisify(request);
+import { getPendingMessages as _getPendingMessages, initChat, sendMsg } from './LiveChatAPI.js';
+import { each, get, filter } from 'lodash';
+import { liveagentlicense, app } from './config.json';
 var debug               = require('debug')("Agent");
-var schedular           = require('node-schedule');
+import { scheduleJob } from 'node-schedule';
 var _map                = {}; //used to store secure session ids //TODO: need to find clear map var
 var userDataMap         = {};//this will be use to store the data object for each user
 var userResponseDataMap = {};
@@ -22,17 +22,17 @@ var userResponseDataMap = {};
 */
 function getPendingMessages( visitorId, ssid, last_message_id){
     debug("getPendingMessages: %s %s ", visitorId, ssid);
-    var licence_id = config.liveagentlicense;
-    return api.getPendingMessages(visitorId, ssid,last_message_id, licence_id)
+    var licence_id = liveagentlicense;
+    return _getPendingMessages(visitorId, ssid,last_message_id, licence_id)
         .then(function(res){
-            _.each(res.events, function(event){
+            each(res.events, function(event){
                 var data = userDataMap[visitorId];
                 if(event.type === "message" && event.user_type !== "visitor"){
                     data.message = event.text;
                     data._originalPayload.message = data.text;
                     debug('replying ', event.text);
                     _map[visitorId].last_message_id = event.message_id;
-                    return sdk.sendUserMessage(data, function(err){
+                    return sendUserMessage(data, function(err){
                         console.log("err", err);
                     }).catch(function(e){
                         console.log(e);
@@ -44,7 +44,7 @@ function getPendingMessages( visitorId, ssid, last_message_id){
                     console.log('chat_closed');
                     delete userResponseDataMap[visitorId];
                     delete _map[visitorId];
-                    sdk.clearAgentSession(data);
+                    clearAgentSession(data);
                 }
             });
         })
@@ -58,13 +58,13 @@ function getPendingMessages( visitorId, ssid, last_message_id){
 /*
  * Schedule a joob to fetch messages every 5 seconds 
  */
-schedular.scheduleJob('*/5 * * * * *', function(){
+scheduleJob('*/5 * * * * *', function(){
     debug('schedular triggered');
     var promiseArr = [];
-    _.each(_map, function(entry){
+    each(_map, function(entry){
         promiseArr.push(getPendingMessages(entry.visitorId, entry.secured_session_id, entry.last_message_id));
      });
-     return Promise.all(promiseArr).then(function(){
+     return all(promiseArr).then(function(){
          debug('scheduled finished');
      }).catch(function(e) {
          debug('error in schedular', e);
@@ -76,7 +76,7 @@ function gethistory(req, res){
     
     if(data) {
         data.limit = 100;
-        return sdk.getMessages(data, function(err, resp){
+        return getMessages(data, function(err, resp){
             if(err){
                 res.status(400);
                 return res.json(err);
@@ -104,17 +104,17 @@ function gethistory(req, res){
  */
 function connectToAgent(requestId, data, cb){
     var formdata = {};
-    formdata.licence_id = config.liveagentlicense;
+    formdata.licence_id = liveagentlicense;
     formdata.welcome_message = "";
-    var visitorId = _.get(data, 'channel.channelInfos.from');
+    var visitorId = get(data, 'channel.channelInfos.from');
     if(!visitorId){
-        visitorId = _.get(data, 'channel.from');
+        visitorId = get(data, 'channel.from');
     }
     userDataMap[visitorId] = data;
     data.message="An Agent will be assigned to you shortly!!!";
-    sdk.sendUserMessage(data, cb);
-    formdata.welcome_message = "Link for user Chat history with bot: "+ config.app.url +"/history/index.html?visitorId=" + visitorId;
-    return api.initChat(visitorId, formdata)
+    sendUserMessage(data, cb);
+    formdata.welcome_message = "Link for user Chat history with bot: "+ app.url +"/history/index.html?visitorId=" + visitorId;
+    return initChat(visitorId, formdata)
          .then(function(res){
              _map[visitorId] = {
                  secured_session_id: res.secured_session_id,
@@ -129,32 +129,32 @@ function connectToAgent(requestId, data, cb){
  */
 function onBotMessage(requestId, data, cb){
     debug("Bot Message Data",data);
-    var visitorId = _.get(data, 'channel.from');
+    var visitorId = get(data, 'channel.from');
     var entry = _map[visitorId];
     if(data.message.length === 0 || data.message === '') {
         return;
     }
-    var message_tone = _.get(data, 'context.dialog_tone');
+    var message_tone = get(data, 'context.dialog_tone');
     if(message_tone && message_tone.length> 0){
-        var angry = _.filter(message_tone, {tone_name: 'angry'});
+        var angry = filter(message_tone, {tone_name: 'angry'});
         if(angry.length){
             angry = angry[0];
             if(angry.level >=2){
                 connectToAgent(requestId, data);
             }
             else {
-                sdk.sendUserMessage(data, cb);
+                sendUserMessage(data, cb);
             }
         }
         else {
-            sdk.sendUserMessage(data, cb);
+            sendUserMessage(data, cb);
         }
     }
     else if(!entry)
     {
-        sdk.sendUserMessage(data, cb);
+        sendUserMessage(data, cb);
     }else if(data.message === "skipUserMessage"){ // condition for skipping a user message
-	sdk.skipUserMessage(data, cb);
+	skipUserMessage(data, cb);
     }
 }
 
@@ -163,27 +163,27 @@ function onBotMessage(requestId, data, cb){
  */
 function onUserMessage(requestId, data, cb){
     debug("user message", data);
-    var visitorId = _.get(data, 'channel.from');
+    var visitorId = get(data, 'channel.from');
     var entry = _map[visitorId];
     if(entry){//check for live agent
         //route to live agent
         var formdata = {};
         formdata.secured_session_id = entry.secured_session_id;
-        formdata.licence_id = config.liveagentlicense;
+        formdata.licence_id = liveagentlicense;
         formdata.message = data.message;
-        return api.sendMsg(visitorId, formdata)
+        return sendMsg(visitorId, formdata)
             .catch(function(e){
                 console.error(e);
                 delete userDataMap[visitorId];
                 delete _map[visitorId];
-                return sdk.sendBotMessage(data, cb);
+                return sendBotMessage(data, cb);
             });
     }
     else {
 	if(data.message === "skipBotMessage") // condition for skipping a bot message
-            return sdk.skipBotMessage(data, cb);
+            return skipBotMessage(data, cb);
         else    
-            return sdk.sendBotMessage(data, cb);
+            return sendBotMessage(data, cb);
     }
 }
 
@@ -194,21 +194,19 @@ function onAgentTransfer(requestId, data, callback){
     connectToAgent(requestId, data, callback);
 }
 
-module.exports = {
-    botId : botId,
-    botName : botName,
-    on_user_message : function(requestId, data, callback) {
-        console.log('data', data);
-        debug('on_user_message');
-        onUserMessage(requestId, data, callback);
-    },
-    on_bot_message : function(requestId, data, callback) {
-        debug('on_bot_message');
-        onBotMessage(requestId, data, callback);
-    },
-    on_agent_transfer : function(requestId, data, callback) {
-        debug('on_webhook');
-        onAgentTransfer(requestId, data, callback);
-    },
-    gethistory: gethistory
-};
+export const botId = botId;
+export const botName = botName;
+export function on_user_message(requestId, data, callback) {
+    console.log('data', data);
+    debug('on_user_message');
+    onUserMessage(requestId, data, callback);
+}
+export function on_bot_message(requestId, data, callback) {
+    debug('on_bot_message');
+    onBotMessage(requestId, data, callback);
+}
+export function on_agent_transfer(requestId, data, callback) {
+    debug('on_webhook');
+    onAgentTransfer(requestId, data, callback);
+}
+export const gethistory = gethistory;
