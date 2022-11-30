@@ -5,10 +5,10 @@
  * @module errors
  */
 
-var util       = require('util');
-var inherits   = util.inherits;
-var format     = util.format;
-var extend     = util._extend;
+ var util       = require('util');
+ var inherits   = util.inherits;
+ var format     = util.format;
+ var extend     = util._extend;
 
 var errors = module.exports = {};
 var SDKFatalError;
@@ -50,7 +50,7 @@ SDKError.prototype.push = function (msg, code) {
         return this;
     }
     if (!msg) {
-        var _internalError = new errors.Internal();
+        var _internalError = new Internal();
         this.errors = _internalError.errors;
         this.statusCode = _internalError.statusCode;
         return this;

@@ -1,10 +1,10 @@
-var botId = "st-12345";
-var botName = "testBot";
+var botId = "st-9654d6a8-1535-57f3-9815-ab6fcc320702";
+var botName = "travelbot";
 
-var sdk = require("./lib/sdk");
+import { sendUserMessage, sendBotMessage, sendAlertMessage, fetchBotVariable } from "./lib/sdk";
 var botVariables = {};
-var langArr = require('./config.json').languages;
-var _ = require('lodash');
+import { languages as langArr } from './config.json';
+import _ from 'lodash';
 var dataStore = require('./dataStore.js').getInst();
 var first = true;
 
@@ -16,63 +16,58 @@ var first = true;
  * We can either update the message, or chose to call one of 'sendBotMessage' or 'sendUserMessage'
  */
 
-module.exports = {
-    botId: botId,
-    botName: botName,
-
-    on_user_message: function(requestId, data, callback) {
-        fetchAllBotVariables(data);
-        if (data.message === "Hi") {
-            data.message = "Hello";
-            //Sends back 'Hello' to user.
-            return sdk.sendUserMessage(data, callback);
-        } else if (!data.agent_transfer) {
-            //Forward the message to bot
-            return sdk.sendBotMessage(data, callback);
-        } else {
-            data.message = "Agent Message";
-            return sdk.sendUserMessage(data, callback);
-        }
-    },
-    on_bot_message: function(requestId, data, callback) {
-        fetchAllBotVariables(data);
-        if (data.message === 'hello') {
-            data.message = 'The Bot says hello!';
-        }
-        //Sends back the message to user
-
-        return sdk.sendUserMessage(data, callback);
-    },
-    on_agent_transfer: function(requestId, data, callback) {
-        fetchAllBotVariables(data);
-        return callback(null, data);
-    },
-    on_event: function(requestId, data, callback) {
-        fetchAllBotVariables(data);
-        return callback(null, data);
-    },
-    on_alert: function(requestId, data, callback) {
-        fetchAllBotVariables(data);
-        return sdk.sendAlertMessage(data, callback);
-    },
-    on_variable_update: function(requestId, data, callback) {
-        var event = data.eventType;
-        if (first || event == "bot_import" || event == "variable_import" || event == "sdk_subscription" || event == "language_enabled") {
-            // fetch BotVariables List based on language specific when there is event subscription/bulkimport
-            sdk.fetchBotVariable(data, langArr, function(err, response) {
-                dataStore.saveAllVariables(response, langArr);
-                first = false;
-            });
-        } else {
-            var lang = data.language;
-            //update Exixting BotVariables in Storage
-            updateBotVariableInDataStore(botVariables, data, event, lang);
-        }
-        console.log(dataStore);
-
+export const botId = botId;
+export const botName = botName;
+export function on_user_message(requestId, data, callback) {
+    fetchAllBotVariables(data);
+    if (data.message === "Hi") {
+        data.message = "Hello";
+        //Sends back 'Hello' to user.
+        return sendUserMessage(data, callback);
+    } else if (!data.agent_transfer) {
+        //Forward the message to bot
+        return sendBotMessage(data, callback);
+    } else {
+        data.message = "Agent Message";
+        return sendUserMessage(data, callback);
     }
+}
+export function on_bot_message(requestId, data, callback) {
+    fetchAllBotVariables(data);
+    if (data.message === 'hello') {
+        data.message = 'The Bot says hello!';
+    }
+    //Sends back the message to user
+    return sendUserMessage(data, callback);
+}
+export function on_agent_transfer(requestId, data, callback) {
+    fetchAllBotVariables(data);
+    return callback(null, data);
+}
+export function on_event(requestId, data, callback) {
+    fetchAllBotVariables(data);
+    return callback(null, data);
+}
+export function on_alert(requestId, data, callback) {
+    fetchAllBotVariables(data);
+    return sendAlertMessage(data, callback);
+}
+export function on_variable_update(requestId, data, callback) {
+    var event = data.eventType;
+    if (first || event == "bot_import" || event == "variable_import" || event == "sdk_subscription" || event == "language_enabled") {
+        // fetch BotVariables List based on language specific when there is event subscription/bulkimport
+        fetchBotVariable(data, langArr, function (err, response) {
+            dataStore.saveAllVariables(response, langArr);
+            first = false;
+        });
+    } else {
+        var lang = data.language;
+        //update Exixting BotVariables in Storage
+        updateBotVariableInDataStore(botVariables, data, event, lang);
+    }
+    console.log(dataStore);
 
-};
+}
 
 function updateBotVariableInDataStore(botVariables, data, event, lang) {
     var variable = data.variable;
@@ -95,7 +90,7 @@ function updateBotVariableInDataStore(botVariables, data, event, lang) {
 
 function fetchAllBotVariables(data) {
     if (first) {
-        sdk.fetchBotVariable(data, langArr, function(err, response) {
+        fetchBotVariable(data, langArr, function(err, response) {
             first = false;
             dataStore.saveAllVariables(response, langArr);
         });
